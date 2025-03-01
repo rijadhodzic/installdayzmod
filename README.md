@@ -1,48 +1,32 @@
-Overview
-
+# Overview
 This Bash script automates the process of downloading and installing a DayZ mod from the Steam Workshop onto a DayZ server. It ensures proper mod linking, key file handling, and verification for a seamless installation experience.
 
-Features
+# Features
+- Automated Mod Download: Fetches and installs mods using SteamCMD.
+- Symbolic Linking: Creates a link to the downloaded mod for easy management.
+- Key File Handling: Copies required key files to the appropriate directory.
+- User-Friendly Prompts: Guides the user through the installation process.
+- Error Handling: Detects missing dependencies and invalid input.
 
-Automated Mod Download: Fetches and installs mods using SteamCMD.
-
-Symbolic Linking: Creates a link to the downloaded mod for easy management.
-
-Key File Handling: Copies required key files to the appropriate directory.
-
-User-Friendly Prompts: Guides the user through the installation process.
-
-Error Handling: Detects missing dependencies and invalid input.
-
-Requirements
-
+# Requirements
 Ensure you have the following installed:
+- SteamCMD
+- curl
+- A DayZ server with the appropriate directories set up
 
-SteamCMD
+# Installation
+`git clone https://github.com/yourusername/dayz-mod-installer.git`
 
-curl
-
-A DayZ server with the appropriate directories set up
-
-Installation
-
-Clone the repository and navigate to the script directory:
-
-git clone https://github.com/yourusername/dayz-mod-installer.git
-cd dayz-mod-installer
+`cd dayz-mod-installer`
 
 Make the script executable:
+`chmod +x install_dayz_mod.sh`
 
-chmod +x install_dayz_mod.sh
-
-Usage
-
+# Usage
 Run the script:
+`./install_dayz_mod.sh`
 
-./install_dayz_mod.sh
-
-Steps:
-
+# Steps:
 The script will check for SteamCMD and curl.
 
 It will ask for your Steam username (saved for future use).
@@ -55,28 +39,22 @@ If the mod includes keys, they will be copied automatically.
 
 If everything is successful, the mod is ready to use!
 
-Example
-
+# Example
 To install a mod from Steam Workshop, use a URL like:
 
-https://steamcommunity.com/sharedfiles/filedetails/?id=123456789
+`https://steamcommunity.com/sharedfiles/filedetails/?id=123456789`
 
-Troubleshooting
+# Troubleshooting
+- SteamCMD not found: Ensure SteamCMD is installed and accessible in your PATH.
+- Invalid Mod ID: Make sure the provided Steam Workshop URL is correct.
+- Key files missing: Not all mods include key files. Check manually if needed.
 
-SteamCMD not found: Ensure SteamCMD is installed and accessible in your PATH.
-
-Invalid Mod ID: Make sure the provided Steam Workshop URL is correct.
-
-Key files missing: Not all mods include key files. Check manually if needed.
-
-License
-
+#License
 This script is open-source and available for modification and redistribution.
 
-Author
+#Author
 
-fx0 - www.dayzbalkan.com
+**fx0 - www.dayzbalkan.com**
 
-Contributions
-
+# Contributions
 Feel free to fork this repository and submit pull requests to improve functionality!
