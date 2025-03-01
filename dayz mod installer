@@ -1,0 +1,106 @@
+#!/bin/bash
+set -euo pipefail
+IFS=$'\n\t'
+
+# Color definitions
+GREEN='\033[1;32m'
+BLUE='\033[1;34m'
+YELLOW='\033[1;33m'
+RED='\033[1;31m'
+NC='\033[0m'  # No Color
+
+# Author & Website Information
+echo -e "${GREEN}Author:${NC} fx0"
+echo -e "${BLUE}Website:${NC} www.dayzbalkan.com"
+echo -e "${YELLOW}This script is open-source and can be used by anyone.${NC}"
+
+# Steam user data
+STEAM_APP_ID=223350
+DAYZ_WORKSHOP_ID=221100
+STEAMCMD_DIR="/home/dayzserver/serverfiles"
+WORKSHOP_DIR="$STEAMCMD_DIR/steamapps/workshop/content/$DAYZ_WORKSHOP_ID"
+MODS_DIR="$STEAMCMD_DIR"
+KEYS_DIR="$STEAMCMD_DIR/keys"
+STEAM_USER_FILE="$STEAMCMD_DIR/.steam_user"
+
+# Error handling function
+error_exit() {
+    echo -e "${RED}Error:${NC} $1" >&2
+    exit 1
+}
+
+# Check if required commands exist
+command -v steamcmd >/dev/null || error_exit "steamcmd is not installed or not in PATH."
+command -v curl >/dev/null || error_exit "curl is not installed or not in PATH."
+
+# Read Steam username from file or prompt the user
+if [[ -f "$STEAM_USER_FILE" ]]; then
+    STEAM_USER=$(< "$STEAM_USER_FILE")
+    echo -e "${GREEN}Using saved Steam username:${NC} $STEAM_USER"
+else
+    read -rp "Enter your Steam username: " STEAM_USER
+    [[ -z "$STEAM_USER" ]] && error_exit "No Steam username provided."
+    echo "$STEAM_USER" > "$STEAM_USER_FILE"
+fi
+
+# Prompt for the Steam Workshop URL
+read -rp "Enter the Steam Workshop URL of the DayZ mod: " WORKSHOP_URL
+[[ -z "$WORKSHOP_URL" ]] && error_exit "No URL provided."
+
+# Extract the Mod ID from the URL (expected format: ...?id=123456789)
+MOD_ID=$(echo "$WORKSHOP_URL" | grep -oP 'id=\K\d+')
+[[ -z "$MOD_ID" ]] && error_exit "Could not extract the Mod ID from the URL!"
+echo -e "${GREEN}Extracted Mod ID:${NC} $MOD_ID"
+
+# Download mod using SteamCMD
+echo -e "${BLUE}Downloading mod $MOD_ID...${NC}"
+steamcmd +force_install_dir "$STEAMCMD_DIR" +login "$STEAM_USER" +app_update "$STEAM_APP_ID" +workshop_download_item "$DAYZ_WORKSHOP_ID" "$MOD_ID" +quit
+
+# Wait until the mod download is complete
+echo -e "${BLUE}Waiting for the mod download to complete...${NC}"
+while [[ ! -d "$WORKSHOP_DIR/$MOD_ID" ]]; do
+    echo -e "${YELLOW}Mod is still downloading...${NC}"
+    sleep 10
+done
+
+# Verify that the mod directory exists
+if [[ -d "$WORKSHOP_DIR/$MOD_ID" ]]; then
+    # Extract the mod title from the Steam Workshop page and sanitize it.
+    # Instead of replacing spaces with underscores, we simply remove unwanted characters.
+    MOD_TITLE=$(curl -s "$WORKSHOP_URL" | grep -oP '(?<=<title>).*?(?=</title>)')
+    MOD_NAME=$(echo "$MOD_TITLE" | sed 's/Steam Workshop:://' | sed 's/[^a-zA-Z0-9 _-]//g' | tr -s ' ' | sed 's/^ //; s/ $//')
+    if [[ -z "$MOD_NAME" ]]; then
+        MOD_NAME="Mod $MOD_ID"
+        echo -e "${YELLOW}Warning: Could not extract mod name, using ${MOD_NAME}.${NC}"
+    fi
+
+    MOD_TARGET="$MODS_DIR/@$MOD_NAME"
+    # Remove existing symbolic link if it exists
+    if [[ -L "$MOD_TARGET" ]]; then
+        echo -e "${YELLOW}Symbolic link $MOD_TARGET already exists, replacing it.${NC}"
+        rm "$MOD_TARGET"
+    fi
+    echo -e "${GREEN}Creating symbolic link for the mod: @$MOD_NAME${NC}"
+    ln -s "$WORKSHOP_DIR/$MOD_ID" "$MOD_TARGET"
+
+    # Process key files: copy them instead of linking
+    if [[ -d "$WORKSHOP_DIR/$MOD_ID/keys" ]]; then
+        echo -e "${BLUE}Copying key files...${NC}"
+        for keyfile in "$WORKSHOP_DIR/$MOD_ID/keys"/*; do
+            [[ -e "$keyfile" ]] || continue
+            keyname=$(basename "$keyfile")
+            if [[ ! -e "$KEYS_DIR/$keyname" ]]; then
+                cp "$keyfile" "$KEYS_DIR/"
+                echo -e "${GREEN}Key ${keyname} copied.${NC}"
+            else
+                echo -e "${YELLOW}Key ${keyname} already exists, skipping.${NC}"
+            fi
+        done
+    else
+        echo -e "${YELLOW}No key files found.${NC}"
+    fi
+
+    echo -e "${GREEN}Mod successfully installed as @$MOD_NAME!${NC}"
+else
+    error_exit "Mod directory not found!"
+fi
