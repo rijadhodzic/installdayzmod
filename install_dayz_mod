@@ -14,11 +14,14 @@ echo -e "${GREEN}Author:${NC} fx0"
 echo -e "${BLUE}Website:${NC} www.dayzbalkan.com"
 echo -e "${YELLOW}This script is open-source and can be used by anyone.${NC}"
 
-# Steam user data
-STEAM_APP_ID=223350
-DAYZ_WORKSHOP_ID=221100
+# Steam app data
+# FIX #1: Corrected App IDs — DayZ game (221100) is used for workshop downloads,
+#          DayZ Server (223350) is only for server installation, not mod downloads.
+DAYZ_APP_ID=221100
+SERVER_APP_ID=223350
+
 STEAMCMD_DIR="/home/dayzserver/serverfiles"
-WORKSHOP_DIR="$STEAMCMD_DIR/steamapps/workshop/content/$DAYZ_WORKSHOP_ID"
+WORKSHOP_DIR="$STEAMCMD_DIR/steamapps/workshop/content/$DAYZ_APP_ID"
 MODS_DIR="$STEAMCMD_DIR"
 KEYS_DIR="$STEAMCMD_DIR/keys"
 STEAM_USER_FILE="$STEAMCMD_DIR/.steam_user"
@@ -52,55 +55,68 @@ MOD_ID=$(echo "$WORKSHOP_URL" | grep -oP 'id=\K\d+')
 [[ -z "$MOD_ID" ]] && error_exit "Could not extract the Mod ID from the URL!"
 echo -e "${GREEN}Extracted Mod ID:${NC} $MOD_ID"
 
-# Download mod using SteamCMD
+# FIX #2: Removed the erroneous +app_update call. SteamCMD's +workshop_download_item
+#          handles the mod download directly using the DayZ game App ID (221100).
 echo -e "${BLUE}Downloading mod $MOD_ID...${NC}"
-steamcmd +force_install_dir "$STEAMCMD_DIR" +login "$STEAM_USER" +app_update "$STEAM_APP_ID" +workshop_download_item "$DAYZ_WORKSHOP_ID" "$MOD_ID" +quit
+steamcmd +force_install_dir "$STEAMCMD_DIR" \
+    +login "$STEAM_USER" \
+    +workshop_download_item "$DAYZ_APP_ID" "$MOD_ID" validate \
+    +quit
 
-# Wait until the mod download is complete
-echo -e "${BLUE}Waiting for the mod download to complete...${NC}"
-while [[ ! -d "$WORKSHOP_DIR/$MOD_ID" ]]; do
-    echo -e "${YELLOW}Mod is still downloading...${NC}"
-    sleep 10
-done
-
-# Verify that the mod directory exists
-if [[ -d "$WORKSHOP_DIR/$MOD_ID" ]]; then
-    # Extract the mod title from the Steam Workshop page and sanitize it.
-    # Instead of replacing spaces with underscores, we simply remove unwanted characters.
-    MOD_TITLE=$(curl -s "$WORKSHOP_URL" | grep -oP '(?<=<title>).*?(?=</title>)')
-    MOD_NAME=$(echo "$MOD_TITLE" | sed 's/Steam Workshop:://' | sed 's/[^a-zA-Z0-9 _-]//g' | tr -s ' ' | sed 's/^ //; s/ $//')
-    if [[ -z "$MOD_NAME" ]]; then
-        MOD_NAME="Mod $MOD_ID"
-        echo -e "${YELLOW}Warning: Could not extract mod name, using ${MOD_NAME}.${NC}"
-    fi
-
-    MOD_TARGET="$MODS_DIR/@$MOD_NAME"
-    # Remove existing symbolic link if it exists
-    if [[ -L "$MOD_TARGET" ]]; then
-        echo -e "${YELLOW}Symbolic link $MOD_TARGET already exists, replacing it.${NC}"
-        rm "$MOD_TARGET"
-    fi
-    echo -e "${GREEN}Creating symbolic link for the mod: @$MOD_NAME${NC}"
-    ln -s "$WORKSHOP_DIR/$MOD_ID" "$MOD_TARGET"
-
-    # Process key files: copy them instead of linking
-    if [[ -d "$WORKSHOP_DIR/$MOD_ID/keys" ]]; then
-        echo -e "${BLUE}Copying key files...${NC}"
-        for keyfile in "$WORKSHOP_DIR/$MOD_ID/keys"/*; do
-            [[ -e "$keyfile" ]] || continue
-            keyname=$(basename "$keyfile")
-            if [[ ! -e "$KEYS_DIR/$keyname" ]]; then
-                cp "$keyfile" "$KEYS_DIR/"
-                echo -e "${GREEN}Key ${keyname} copied.${NC}"
-            else
-                echo -e "${YELLOW}Key ${keyname} already exists, skipping.${NC}"
-            fi
-        done
-    else
-        echo -e "${YELLOW}No key files found.${NC}"
-    fi
-
-    echo -e "${GREEN}Mod successfully installed as @$MOD_NAME!${NC}"
-else
-    error_exit "Mod directory not found!"
+# FIX #3: Replaced the redundant while-loop (steamcmd is synchronous) with a
+#          simple directory check. The loop had no timeout and would spin forever
+#          if the download failed.
+if [[ ! -d "$WORKSHOP_DIR/$MOD_ID" ]]; then
+    error_exit "Mod download failed — directory not found: $WORKSHOP_DIR/$MOD_ID"
 fi
+
+# Extract the mod title from the Steam Workshop page and sanitize it.
+MOD_TITLE=$(curl -s "$WORKSHOP_URL" | grep -oP '(?<=<title>).*?(?=</title>)')
+
+# FIX #4: Added `tr ' ' '_'` at the end of the pipeline so the symlink name
+#          never contains spaces, which would break unquoted command-line usage.
+MOD_NAME=$(echo "$MOD_TITLE" \
+    | sed 's/Steam Workshop:://' \
+    | sed 's/[^a-zA-Z0-9 _-]//g' \
+    | tr -s ' ' \
+    | sed 's/^ //; s/ $//' \
+    | tr ' ' '_')
+
+if [[ -z "$MOD_NAME" ]]; then
+    MOD_NAME="Mod_$MOD_ID"
+    echo -e "${YELLOW}Warning: Could not extract mod name, using ${MOD_NAME}.${NC}"
+fi
+
+MOD_TARGET="$MODS_DIR/@$MOD_NAME"
+
+# Remove existing symbolic link if it exists
+if [[ -L "$MOD_TARGET" ]]; then
+    echo -e "${YELLOW}Symbolic link $MOD_TARGET already exists, replacing it.${NC}"
+    rm "$MOD_TARGET"
+fi
+
+echo -e "${GREEN}Creating symbolic link for the mod: @$MOD_NAME${NC}"
+ln -s "$WORKSHOP_DIR/$MOD_ID" "$MOD_TARGET"
+
+# FIX #5: Added `mkdir -p` to ensure the keys directory exists before copying,
+#          preventing cp from failing if it was never created.
+mkdir -p "$KEYS_DIR"
+
+# Process key files: copy them instead of linking
+if [[ -d "$WORKSHOP_DIR/$MOD_ID/keys" ]]; then
+    echo -e "${BLUE}Copying key files...${NC}"
+    for keyfile in "$WORKSHOP_DIR/$MOD_ID/keys"/*; do
+        [[ -e "$keyfile" ]] || continue
+        keyname=$(basename "$keyfile")
+        if [[ ! -e "$KEYS_DIR/$keyname" ]]; then
+            cp "$keyfile" "$KEYS_DIR/"
+            echo -e "${GREEN}Key ${keyname} copied.${NC}"
+        else
+            echo -e "${YELLOW}Key ${keyname} already exists, skipping.${NC}"
+        fi
+    done
+else
+    echo -e "${YELLOW}No key files found.${NC}"
+fi
+
+echo -e "${GREEN}Mod successfully installed as @$MOD_NAME!${NC}"
